@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.8.4-RELEASE (2021-11-03)
+
+1. Introduce /coordinape form request command for BanklessDAO
+2. Update feedback request form to canny
+3. Run build-test action on every pull request
+
 ## 1.8.3-RELEASE (2021-10-26)
 
 1. Check rate limit
