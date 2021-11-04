@@ -5,16 +5,16 @@ import Log from '../../utils/Log';
 import ServiceUtils from '../../utils/ServiceUtils';
 import dbInstance from '../../utils/dbUtils';
 import constants from '../constants/constants';
-import { UsernameSpamFilterConfig } from '../../types/spam-filter/UsernameSpamFilter';
-import { UsernameSpamFilterType } from '../../types/spam-filter/UsernameSpamFilterType';
+import { SpamFilterConfig } from '../../types/spam-filter/SpamFilterConfig';
+import { SpamFilterConfigType } from '../../types/spam-filter/SpamFilterConfigType';
 
 const nonStandardCharsRegex = /[^\w\s\p{P}\p{S}Ξ]/gu;
 const emojiRegex = /\p{So}/gu;
 const whitespaceRegex = /[\s]/g;
 
-const UsernameSpamFilter = {
+const SpamFilter = {
 	/**
-	 * Bans a guild member if they have a nickname or username similar to that of a high ranking member 
+	 * Bans a guild member if they have a nickname or username similar to that of a protected member 
 	 * of the Discord. 
 	 * 
 	 * @param member guild member object
@@ -25,22 +25,22 @@ const UsernameSpamFilter = {
 			return false;
 		}
 
-		const highRankingRoles = await this.getHighRankingRolesForServer(member);
+		const protectedRoles = await this.getProtectedRolesForServer(member);
 
 		// If list is empty, username spam filter has not been configured for Discord server
-		if (highRankingRoles.length == 0) {
+		if (protectedRoles.length == 0) {
 			return false;
 		}
 
-		// Get members from high ranking roles
-		const highRankingMembers = await ServiceUtils.getMembersWithRoles(member.guild, highRankingRoles);
+		// Get members from protected roles
+		const protectedMembers = await ServiceUtils.getMembersWithRoles(member.guild, protectedRoles);
 
-		// Sanitize high-ranking member names in preparation for comparing them to new member nickname
-		const highRankingNames = highRankingMembers.map(highRankingMember => {
-			if (highRankingMember.nickname) {
-				return this.sanitizeUsername(highRankingMember.nickname);
+		// Sanitize protected member names in preparation for comparing them to new member nickname
+		const protectedNames = protectedMembers.map(protectedMember => {
+			if (protectedMember.nickname) {
+				return this.sanitizeUsername(protectedMember.nickname);
 			}
-			return this.sanitizeUsername(highRankingMember.user.username);
+			return this.sanitizeUsername(protectedMember.user.username);
 		});
 
 		// New members and members resetting their nickname will not have a nickname
@@ -51,7 +51,7 @@ const UsernameSpamFilter = {
 
 		const username = this.sanitizeUsername(member.user.username);
 
-		if ((nickname && highRankingNames.includes(nickname)) || highRankingNames.includes(username)) {
+		if ((nickname && protectedNames.includes(nickname)) || protectedNames.includes(username)) {
 			const debugMessage = `Nickname: ${member.displayName}. Username: ${member.user.tag}.`;
 
 			// Fetch admin contacts
@@ -132,8 +132,8 @@ const UsernameSpamFilter = {
 		const usernameSpamFilterDb = db.collection(constants.DB_COLLECTION_USERNAME_SPAM_FILTER);
 
 		// Check if member is on allowlist
-		const allowlist: UsernameSpamFilterConfig = await usernameSpamFilterDb.findOne({
-			objectType: UsernameSpamFilterType.ALLOWLIST_USER,
+		const allowlist: SpamFilterConfig = await usernameSpamFilterDb.findOne({
+			objectType: SpamFilterConfigType.ALLOWLIST_USER,
 			discordObjectId: member.user.id,
 			discordServerId: member.guild.id,
 		});
@@ -156,13 +156,13 @@ const UsernameSpamFilter = {
 		const usernameSpamFilterDb: Collection = db.collection(constants.DB_COLLECTION_USERNAME_SPAM_FILTER);
 
 		// Get roles on the allowlist
-		const allowlistRoleCursor: Cursor<UsernameSpamFilterConfig> = await usernameSpamFilterDb.find({
-			objectType: UsernameSpamFilterType.ALLOWLIST_ROLE,
+		const allowlistRoleCursor: Cursor<SpamFilterConfig> = await usernameSpamFilterDb.find({
+			objectType: SpamFilterConfigType.ALLOWLIST_ROLE,
 			discordServerId: member.guild.id,
 		});
-		const allowlistRoleList: UsernameSpamFilterConfig[] = [];
+		const allowlistRoleList: SpamFilterConfig[] = [];
 
-		await allowlistRoleCursor.forEach((usernameSpamFilterConfig: UsernameSpamFilterConfig) => {
+		await allowlistRoleCursor.forEach((usernameSpamFilterConfig: SpamFilterConfig) => {
 			allowlistRoleList.push(usernameSpamFilterConfig);
 		});
 
@@ -176,28 +176,28 @@ const UsernameSpamFilter = {
 	},
 
 	/**
-	* Get the configured high ranking roles for a Discord server
+	* Get the configured protected roles for a Discord server
 	* 
 	* @param member guild member object
-	* @returns high ranking roles configured for the username spam filter
+	* @returns protected roles configured for the username spam filter
 	*/
-	async getHighRankingRolesForServer(member: GuildMember): Promise<string[]> {
+	async getProtectedRolesForServer(member: GuildMember): Promise<string[]> {
 		const db: Db = await dbInstance.dbConnect(constants.DB_NAME_DEGEN);
 		const usernameSpamFilterDb: Collection = db.collection(constants.DB_COLLECTION_USERNAME_SPAM_FILTER);
 
-		// Get high ranking roles configured for Discord server
-		const highRankingRolesCursor: Cursor<UsernameSpamFilterConfig> = await usernameSpamFilterDb.find({
-			objectType: UsernameSpamFilterType.HIGH_RANKING_ROLE,
+		// Get protected roles configured for Discord server
+		const protectedRolesCursor: Cursor<SpamFilterConfig> = await usernameSpamFilterDb.find({
+			objectType: SpamFilterConfigType.PROTECTED_ROLE,
 			discordServerId: member.guild.id,
 		});
-		const highRankingRolesList: UsernameSpamFilterConfig[] = [];
+		const protectedRolesList: SpamFilterConfig[] = [];
 
-		await highRankingRolesCursor.forEach((usernameSpamFilterConfig: UsernameSpamFilterConfig) => {
-			highRankingRolesList.push(usernameSpamFilterConfig);
+		await protectedRolesCursor.forEach((usernameSpamFilterConfig: SpamFilterConfig) => {
+			protectedRolesList.push(usernameSpamFilterConfig);
 		});
 
-		return highRankingRolesList.map(role => role.discordObjectId);
+		return protectedRolesList.map(role => role.discordObjectId);
 	},
 };
 
-export default UsernameSpamFilter;
+export default SpamFilter;

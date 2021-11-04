@@ -1,8 +1,9 @@
 import { Collection, ObjectId } from 'mongodb';
-import { UsernameSpamFilterType } from './UsernameSpamFilterType';
-export interface UsernameSpamFilterConfig extends Collection {
+import { SpamFilterConfigType } from './SpamFilterConfigType';
+
+export interface SpamFilterConfig extends Collection {
     _id: ObjectId,
-	objectType: UsernameSpamFilterType,
+	objectType: SpamFilterConfigType,
 	discordObjectId: string,
 	discordObjectName: string,
 	discordServerId: string,

@@ -2,7 +2,7 @@ import { PartialUser, User } from 'discord.js';
 import { DiscordEvent } from '../types/discord/DiscordEvent';
 import ServiceUtils from '../utils/ServiceUtils';
 import { LogUtils } from '../utils/Log';
-import UsernameSpamFilter from '../service/spam-filter/UsernameSpamFilter';
+import SpamFilter from '../service/spam-filter/SpamFilter';
 
 export default class implements DiscordEvent {
 	name = 'userUpdate';
@@ -21,7 +21,7 @@ export default class implements DiscordEvent {
 				const guildMember = await ServiceUtils.getGuildMemberFromUser(newUser as User, process.env.DISCORD_SERVER_ID);
 				
 				if (ServiceUtils.isBanklessDAO(guildMember.guild)) {
-					if (await UsernameSpamFilter.runUsernameSpamFilter(guildMember)) {
+					if (await SpamFilter.runUsernameSpamFilter(guildMember)) {
 						return;
 					}
 				}

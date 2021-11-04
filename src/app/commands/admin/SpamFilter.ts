@@ -1,7 +1,7 @@
 import { CommandContext, CommandOptionType, SlashCommand, SlashCreator } from 'slash-create';
 import EarlyTermination from '../../errors/EarlyTermination';
 import ValidationError from '../../errors/ValidationError';
-import ConfigSpamFilter from '../../service/spam-filter/ConfigUsernameSpamFilter';
+import ConfigSpamFilter from '../../service/spam-filter/ConfigSpamFilter';
 import { LogUtils } from '../../utils/Log';
 import ServiceUtils from '../../utils/ServiceUtils';
 
@@ -15,24 +15,24 @@ export default class SpamFilter extends SlashCommand {
 				{
 					name: 'config',
 					type: CommandOptionType.SUB_COMMAND,
-					description: 'Configure roles that have high-ranking users.',
+					description: 'Configure roles for the username spam filter.',
 					options: [
 						{
 							name: 'role-1',
 							type: CommandOptionType.ROLE,
-							description: 'Role with high-ranking members.',
+							description: 'Role to configure.',
 							required: false,
 						},
 						{
 							name: 'role-2',
 							type: CommandOptionType.ROLE,
-							description: 'Role with high-ranking members.',
+							description: 'Role to configure.',
 							required: false,
 						},
 						{
 							name: 'role-3',
 							type: CommandOptionType.ROLE,
-							description: 'Role with high-ranking members.',
+							description: 'Role to configure.',
 							required: false,
 						},
 					],
@@ -52,8 +52,8 @@ export default class SpamFilter extends SlashCommand {
 
 		const { guildMember } = await ServiceUtils.getGuildAndMember(ctx);
 
-		const highRankingRoles = [ctx.options.config['role-1'], ctx.options.config['role-2'], ctx.options.config['role-3']];
-		const command = ConfigSpamFilter(ctx, guildMember, highRankingRoles);
+		const roles = [ctx.options.config['role-1'], ctx.options.config['role-2'], ctx.options.config['role-3']];
+		const command = ConfigSpamFilter(ctx, guildMember, roles);
 		return this.handleCommandError(ctx, command);
 	}
 

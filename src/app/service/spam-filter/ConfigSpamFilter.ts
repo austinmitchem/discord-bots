@@ -2,47 +2,47 @@ import { Collection, GuildMember, Message, MessageEmbedOptions, MessageReaction,
 import { Db, Collection as MongoCollection, InsertWriteOpResult, BulkWriteError, MongoError, Cursor } from 'mongodb';
 import { CommandContext } from 'slash-create';
 import ValidationError from '../../errors/ValidationError';
-import { UsernameSpamFilterConfig } from '../../types/spam-filter/UsernameSpamFilter';
-import { UsernameSpamFilterType } from '../../types/spam-filter/UsernameSpamFilterType';
+import { SpamFilterConfig } from '../../types/spam-filter/SpamFilterConfig';
+import { SpamFilterConfigType } from '../../types/spam-filter/SpamFilterConfigType';
 import dbUtils from '../../utils/dbUtils';
 import { LogUtils } from '../../utils/Log';
 import ServiceUtils from '../../utils/ServiceUtils';
 import constants from '../constants/constants';
 
-const addToFilter = '✅';
-const removeFromFilter = '❌';
+const protectRoles = '✅';
+const unprotectRoles = '❌';
 const addToAllowlist = '🆗';
 const removeFromAllowlist = '🛑';
 const edit = '📝';
 
-export default async (ctx: CommandContext, guildMember: GuildMember, roles?: string[]) : Promise<any> => {
+export default async (ctx: CommandContext, guildMember: GuildMember, roles?: string[]): Promise<any> => {
 	if (!(ServiceUtils.isDiscordAdmin(guildMember) || ServiceUtils.isDiscordServerManager(guildMember))) {
 		throw new ValidationError('Sorry, only discord admins and managers can configure spam filter settings.');
 	}
 
-	const highRankingRoles: Role[] = await ServiceUtils.retrieveRoles(guildMember.guild, roles);
+	const protectedRoles: Role[] = await ServiceUtils.retrieveRoles(guildMember.guild, roles);
 	const dbInstance: Db = await dbUtils.dbConnect(constants.DB_NAME_DEGEN);
 
-	if (highRankingRoles.length == 0) {
+	if (protectedRoles.length == 0) {
 		await ctx.send(`Hey ${ctx.user.mention}, I just sent you a DM!`).catch(e => LogUtils.logError('failed to send dm to user', e));
-		await guildMember.send(await getRolesFromUsernameSpamFilter(guildMember, dbInstance));
+		await guildMember.send({ embeds: [await getRolesFromUsernameSpamFilter(guildMember, dbInstance)] });
 		return;
 	}
 
 	const intro: MessageEmbedOptions = {
 		title: 'Username Spam Filter Configuration',
 		description: 'Welcome to Username Spam Filter configuration.\n\n' +
-			'This is used as a first-time setup of the username spam filter. I can help assign or remove high-ranking ' +
-			'roles to be used by the username spam filter.\n\n' +
 			'The username spam filter will auto-ban any user that joins with or changes their nickname to a username ' +
-            'or nickname of a member with a high-ranking role.',
+			'or nickname of a member with a protected role.\n' +
+			'Users with roles on the allowlist cannot be auto-banned by the bot. It is recommended to assign a base ' +
+			'verified member role to the allowlist.',
 		footer: {
 			text: '@Bankless DAO 🏴',
 		},
 	};
 
 	const fields = [];
-	for (const role of highRankingRoles) {
+	for (const role of protectedRoles) {
 		fields.push({
 			name: 'Role',
 			value: role.name,
@@ -52,21 +52,21 @@ export default async (ctx: CommandContext, guildMember: GuildMember, roles?: str
 
 	const whichRolesAreAllowedQuestion: MessageEmbedOptions = {
 		title: 'How should these roles be configured?',
-		description: `${addToFilter} - Add roles to username spam filter. Users that change their nickname to that of a user in one of these roles will be auto-banned.
-		${removeFromFilter} - Remove roles from username spam filter.
+		description: `${protectRoles} - Desginate roles for protection by the username spam filter. Users that change their nickname to that of a user in one of these roles will be auto-banned.
+		${unprotectRoles} - Remove roles from protection by the username spam filter.
 		${addToAllowlist} - Add roles to allowlist. Users in these roles cannot be banned by the username spam filter.
 		${removeFromAllowlist} - Remove roles from allow list.`,
 		fields: fields,
 		timestamp: new Date().getTime(),
 		footer: {
-			text: `${addToFilter} - add to filter | ${removeFromFilter} - remove from filter | ${addToAllowlist} - add to allowlist | ${removeFromAllowlist} - remove from allowlist | ${edit} - edit | Please reply within 60 minutes`,
+			text: `${protectRoles} - protect roles | ${unprotectRoles} - unprotect roles | ${addToAllowlist} - add to allowlist | ${removeFromAllowlist} - remove from allowlist | ${edit} - edit | Please reply within 60 minutes`,
 		},
 	};
-	
+
 	const message: Message = await guildMember.send({ embeds: [intro, whichRolesAreAllowedQuestion] });
 	await ctx.send(`Hey ${ctx.user.mention}, I just sent you a DM!`).catch(e => LogUtils.logError('failed to send dm to user', e));
-	await message.react(addToFilter);
-	await message.react(removeFromFilter);
+	await message.react(protectRoles);
+	await message.react(unprotectRoles);
 	await message.react(addToAllowlist);
 	await message.react(removeFromAllowlist);
 	await message.react(edit);
@@ -76,32 +76,32 @@ export default async (ctx: CommandContext, guildMember: GuildMember, roles?: str
 		time: (6000 * 60),
 		errors: ['time'],
 		filter: async (reaction, user) => {
-			return [addToFilter, removeFromFilter, addToAllowlist, removeFromAllowlist, edit].includes(reaction.emoji.name) && !user.bot;
+			return [protectRoles, unprotectRoles, addToAllowlist, removeFromAllowlist, edit].includes(reaction.emoji.name) && !user.bot;
 		},
 	});
 	const reaction: MessageReaction = collected.first();
-	let confirmationMsg: MessageEmbedOptions; 
+	let confirmationMsg: MessageEmbedOptions;
 
-	if (reaction.emoji.name === addToFilter) {
-		await addRolesToUsernameSpamFilter(guildMember, dbInstance, highRankingRoles, UsernameSpamFilterType.HIGH_RANKING_ROLE);
+	if (reaction.emoji.name === protectRoles) {
+		await addRolesToUsernameSpamFilter(guildMember, dbInstance, protectedRoles, SpamFilterConfigType.PROTECTED_ROLE);
 		confirmationMsg = {
 			title: 'Configuration Added',
 			description: 'The roles are now protected by the username spam filter.',
 		};
-	} else if (reaction.emoji.name === removeFromFilter) {
-		await removeRolesFromUsernameSpamFilter(guildMember, dbInstance, highRankingRoles, UsernameSpamFilterType.HIGH_RANKING_ROLE);
+	} else if (reaction.emoji.name === unprotectRoles) {
+		await removeRolesFromUsernameSpamFilter(guildMember, dbInstance, protectedRoles, SpamFilterConfigType.PROTECTED_ROLE);
 		confirmationMsg = {
 			title: 'Configuration Removed',
 			description: 'The roles are no longer protected by the username spam filter.',
 		};
 	} else if (reaction.emoji.name === addToAllowlist) {
-		await addRolesToUsernameSpamFilter(guildMember, dbInstance, highRankingRoles, UsernameSpamFilterType.ALLOWLIST_ROLE);
+		await addRolesToUsernameSpamFilter(guildMember, dbInstance, protectedRoles, SpamFilterConfigType.ALLOWLIST_ROLE);
 		confirmationMsg = {
 			title: 'Configuration Added',
 			description: 'The roles are now on the allowlist.',
 		};
 	} else if (reaction.emoji.name === removeFromAllowlist) {
-		await removeRolesFromUsernameSpamFilter(guildMember, dbInstance, highRankingRoles, UsernameSpamFilterType.ALLOWLIST_ROLE);
+		await removeRolesFromUsernameSpamFilter(guildMember, dbInstance, protectedRoles, SpamFilterConfigType.ALLOWLIST_ROLE);
 		confirmationMsg = {
 			title: 'Configuration Removed',
 			description: 'The roles are no longer on the allowlist.',
@@ -117,10 +117,10 @@ export default async (ctx: CommandContext, guildMember: GuildMember, roles?: str
 	return;
 };
 
-export const addRolesToUsernameSpamFilter = async (guildMember: GuildMember, dbInstance: Db, roles: Role[], objectType: UsernameSpamFilterType): Promise<any> => {
-    
+export const addRolesToUsernameSpamFilter = async (guildMember: GuildMember, dbInstance: Db, roles: Role[], objectType: SpamFilterConfigType): Promise<any> => {
+
 	const usernameSpamFilterDb: MongoCollection = dbInstance.collection(constants.DB_COLLECTION_USERNAME_SPAM_FILTER);
-    
+
 	const usernameSpamFilterList = [];
 	for (const role of roles) {
 		usernameSpamFilterList.push({
@@ -132,7 +132,7 @@ export const addRolesToUsernameSpamFilter = async (guildMember: GuildMember, dbI
 		});
 	}
 
-	let result: InsertWriteOpResult<UsernameSpamFilterConfig>;
+	let result: InsertWriteOpResult<SpamFilterConfig>;
 	try {
 		result = await usernameSpamFilterDb.insertMany(usernameSpamFilterList, {
 			ordered: false,
@@ -150,7 +150,7 @@ export const addRolesToUsernameSpamFilter = async (guildMember: GuildMember, dbI
 	}
 };
 
-export const removeRolesFromUsernameSpamFilter = async (guildMember: GuildMember, db: Db, roles: Role[], objectType: UsernameSpamFilterType): Promise<any> => {
+export const removeRolesFromUsernameSpamFilter = async (guildMember: GuildMember, db: Db, roles: Role[], objectType: SpamFilterConfigType): Promise<any> => {
 
 	const usernameSpamFilterDb: MongoCollection = db.collection(constants.DB_COLLECTION_USERNAME_SPAM_FILTER);
 
@@ -167,24 +167,36 @@ export const removeRolesFromUsernameSpamFilter = async (guildMember: GuildMember
 	}
 };
 
-export const getRolesFromUsernameSpamFilter = async (guildMember: GuildMember, db: Db): Promise<string> => {
+export const getRolesFromUsernameSpamFilter = async (guildMember: GuildMember, db: Db): Promise<MessageEmbedOptions> => {
 
 	const usernameSpamFilterDb: MongoCollection = db.collection(constants.DB_COLLECTION_USERNAME_SPAM_FILTER);
 
-	const rolesCursor: Cursor<UsernameSpamFilterConfig> = await usernameSpamFilterDb.find({
+	const rolesCursor: Cursor<SpamFilterConfig> = await usernameSpamFilterDb.find({
 		discordServerId: guildMember.guild.id
 	});
-	const highRankingRoles: UsernameSpamFilterConfig[] = [];
-	const allowlistRoles: UsernameSpamFilterConfig[] = [];
+	const protectedRoles: string[] = [];
+	const allowlistRoles: string[] = [];
 
-	await rolesCursor.forEach((usernameSpamFilterConfig: UsernameSpamFilterConfig) => {
-		if (usernameSpamFilterConfig.objectType == UsernameSpamFilterType.HIGH_RANKING_ROLE) {
-			highRankingRoles.push(usernameSpamFilterConfig);
-		} else if (usernameSpamFilterConfig.objectType == UsernameSpamFilterType.ALLOWLIST_ROLE) {
-			allowlistRoles.push(usernameSpamFilterConfig);
+	await rolesCursor.forEach((config: SpamFilterConfig) => {
+		if (config.objectType == SpamFilterConfigType.PROTECTED_ROLE) {
+			protectedRoles.push(config.discordObjectName);
+		} else if (config.objectType == SpamFilterConfigType.ALLOWLIST_ROLE) {
+			allowlistRoles.push(config.discordObjectName);
 		}
 	});
 
-	return `Roles protected by filter: ${highRankingRoles.forEach(role => {role.discordObjectName})}
-	Roles on allowlist: ${allowlistRoles.forEach(role => {role.discordObjectName})}`
+	let protectedRolesString = '';
+	let allowlistRolesString = '';
+
+	protectedRoles.length == 0 ? protectedRolesString = 'None' 
+		: protectedRoles.forEach(role => { protectedRolesString += `${role}\n` })
+
+	allowlistRoles.length == 0 ? allowlistRolesString = 'None'
+		: allowlistRoles.forEach(role => { allowlistRolesString += `${role}\n` })
+
+	return {
+		title: 'Username Spam Filter Configuration',
+		description: `**Roles protected by filter:**\n${protectedRolesString}\n` 
+			+ `**Roles on allowlist:**\n${allowlistRolesString}`
+	}
 }
